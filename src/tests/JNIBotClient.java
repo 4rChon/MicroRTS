@@ -6,6 +6,7 @@ import java.awt.image.WritableRaster;
 import java.io.StringWriter;
 import java.io.Writer;
 import java.nio.file.Paths;
+import java.util.Arrays;
 
 import ai.core.AI;
 import ai.jni.Response;
@@ -16,6 +17,8 @@ import rts.GameState;
 import rts.PhysicalGameState;
 import rts.PlayerAction;
 import rts.TraceEntry;
+import rts.UnitAction;
+import rts.units.Unit;
 import rts.units.UnitTypeTable;
 
 /**
@@ -44,8 +47,10 @@ public class JNIBotClient {
     boolean gameover = false;
     boolean layerJSON = true;
     public int renderTheme = PhysicalGameStatePanel.COLORSCHEME_WHITE;
+    public int maxAttackRadius;
 
     // storage
+    int[][][] masks;
     double[] rewards;
     boolean[] dones;
     Response response;
@@ -69,6 +74,7 @@ public class JNIBotClient {
         rfs = a_rfs;
         utt = a_utt;
         partialObs = partial_obs;
+        maxAttackRadius = utt.getMaxAttackRange() * 2 + 1;
         ai1 = a_ai1;
         ai2 = a_ai2;
         if (ai1 == null || ai2 == null) {
@@ -81,9 +87,30 @@ public class JNIBotClient {
         pgs = PhysicalGameState.load(mapPath, utt);
 
         // initialize storage
+        masks = new int[pgs.getHeight()][pgs.getWidth()][1+6+4+4+4+4+utt.getUnitTypes().size()+maxAttackRadius*maxAttackRadius];
         rewards = new double[rfs.length];
         dones = new boolean[rfs.length];
         response = new Response(null, null, null, null);
+    }
+
+    /**
+     * @param player
+     * @return Legal actions mask for given player.
+     * @throws Exception
+     */
+    public int[][][] getMasks(int player) throws Exception {
+        for (int i = 0; i < masks.length; i++) {
+            for (int j = 0; j < masks[0].length; j++) {
+                Arrays.fill(masks[i][j], 0);
+            }
+        }
+        for (Unit u: pgs.getUnits()) {
+            if (u.getPlayer() == player && gs.getActionAssignment(u) == null) {
+                masks[u.getY()][u.getX()][0] = 1;
+                UnitAction.getValidActionArray(u, gs, utt, masks[u.getY()][u.getX()], maxAttackRadius, 1);
+            }
+        }
+        return masks;
     }
 
     public byte[] render(boolean returnPixels) throws Exception {
@@ -126,11 +153,15 @@ public class JNIBotClient {
             dones[i] = rfs[i].isDone();
             rewards[i] = rfs[i].getReward();
         }
+
+        Writer w = new StringWriter();
+        te.toJSON(w);
+
         response.set(
-            null,
+            gs.getVectorObservation(player),
             rewards,
             dones,
-            "{}");
+            w.toString());
         return response;
     }
 
@@ -159,7 +190,7 @@ public class JNIBotClient {
             dones[i] = false;
         }
         response.set(
-            null,
+            gs.getVectorObservation(player),
             rewards,
             dones,
             "{}");

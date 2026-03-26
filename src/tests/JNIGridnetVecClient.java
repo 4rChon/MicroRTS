@@ -1,5 +1,7 @@
 package tests;
 
+import java.util.Arrays;
+
 import ai.PassiveAI;
 import ai.core.AI;
 import ai.jni.Response;
@@ -168,6 +170,15 @@ public class JNIGridnetVecClient {
             botClients[i] = new JNIBotClient(a_rfs, a_micrortsPath, mapPaths[i], a_ai1s[i], a_ai2s[i], a_utt, partialObs);
         }
         responses = new Responses(null, null, null);
+
+        // we only do this to get the observation size
+        Response r = new JNIGridnetClient(a_rfs, a_micrortsPath, mapPaths[0], new PassiveAI(a_utt), a_utt, partialObs).reset(0);
+        int s1 = botClients.length;
+        int s2 = r.observation.length; 
+        int s3 = r.observation[0].length;
+        int s4 = r.observation[0][0].length;
+        masks = new int[s1][][][];
+        observation = new int[s1][s2][s3][s4];
         rs = new Response[a_ai2s.length];
         reward = new double[a_ai2s.length][rfs.length];
         done = new boolean[a_ai2s.length][rfs.length];
@@ -182,11 +193,11 @@ public class JNIGridnetVecClient {
                 rs[i] = botClients[i].reset(players[i]);
             }
             for (int i = 0; i < rs.length; i++) {
-                // observation[i] = rs[i].observation;
+                observation[i] = rs[i].observation;
                 reward[i] = rs[i].reward;
                 done[i] = rs[i].done;
             }
-            responses.set(null, reward, done);
+            responses.set(observation, reward, done);
             return responses;
         }
         
@@ -211,11 +222,16 @@ public class JNIGridnetVecClient {
     }
 
     public Responses gameStep(int[][][] action, int[] players) throws Exception {
+        // System.out.println("gameStep called with actions: " + Arrays.deepToString(action));
+        // System.out.println("and players: " + Arrays.toString(players));
         if (botClients != null) {
+            // System.out.println("Bot clients: " + botClients.length);
+            // System.out.println("Using bot clients...");
             for (int i = 0; i < botClients.length; i++) {
                 rs[i] = botClients[i].gameStep(players[i]);
                 envSteps[i] += 1;
                 if (rs[i].done[0] || envSteps[i] >= maxSteps) {
+                    String info = rs[i].info;
                     for (int j = 0; j < terminalReward1.length; j++) {
                         terminalReward1[j] = rs[i].reward[j];
                         terminalDone1[j] = rs[i].done[j];
@@ -226,25 +242,31 @@ public class JNIGridnetVecClient {
                         rs[i].done[j] = terminalDone1[j];
                     }
                     rs[i].done[0] = true;
-                    envSteps[i] =0;
+                    rs[i].info = info;
+                    envSteps[i] = 0;
                 }
             }
+            String infos = "";
             for (int i = 0; i < rs.length; i++) {
-                // observation[i] = rs[i].observation;
+                observation[i] = rs[i].observation;
                 reward[i] = rs[i].reward;
                 done[i] = rs[i].done;
+                infos += rs[i].info + " ";
             }
-            responses.set(null, reward, done);
+            responses.set(observation, reward, done, infos);
             return responses;
         }
-        
+
         for (int i = 0; i < selfPlayClients.length; i++) {
+            // System.out.println("Self-play clients: " + selfPlayClients.length);
+            // System.out.println("Processing self-play client " + i);
             selfPlayClients[i].gameStep(action[i*2], action[i*2+1]);
             rs[i*2] = selfPlayClients[i].getResponse(0);
             rs[i*2+1] = selfPlayClients[i].getResponse(1);
             envSteps[i*2] += 1;
             envSteps[i*2+1] += 1;
             if (rs[i*2].done[0] || envSteps[i*2] >= maxSteps) {
+                String info = rs[i*2].info;
                 for (int j = 0; j < terminalReward1.length; j++) {
                     terminalReward1[j] = rs[i*2].reward[j];
                     terminalDone1[j] = rs[i*2].done[j];
@@ -261,17 +283,22 @@ public class JNIGridnetVecClient {
                 }
                 rs[i*2].done[0] = true;
                 rs[i*2+1].done[0] = true;
+                rs[i*2].info = info;
+                rs[i*2+1].info = info;
                 envSteps[i*2] =0;
                 envSteps[i*2+1] =0;
             }
         }
 
         for (int i = selfPlayClients.length*2; i < players.length; i++) {
+            // System.out.println("JNI vs. bot clients: " + clients.length);
+            // System.out.println("Processing client " + i);
             envSteps[i] += 1;
             rs[i] = clients[i-selfPlayClients.length*2].gameStep(action[i], players[i]);
             if (rs[i].done[0] || envSteps[i] >= maxSteps) {
                 // TRICKY: note that `clients` already resets the shared `observation`
                 // so we need to set the old reward and done to this response
+                String info = rs[i].info;
                 for (int j = 0; j < rs[i].reward.length; j++) {
                     terminalReward1[j] = rs[i].reward[j];
                     terminalDone1[j] = rs[i].done[j];
@@ -282,17 +309,25 @@ public class JNIGridnetVecClient {
                     rs[i].done[j] = terminalDone1[j];
                 }
                 rs[i].done[0] = true;
+                rs[i].info = info;
                 envSteps[i] = 0;
             }
         }
-        
+
+        String infos = "[";
         for (int i = 0; i < rs.length; i++) {
             observation[i] = rs[i].observation;
             reward[i] = rs[i].reward;
             done[i] = rs[i].done;
+            if (i < rs.length - 1) {
+                infos += rs[i].info + ", ";
+            } else {
+                infos += rs[i].info;
+            }
         }
+        infos += "]";
         
-        responses.set(observation, reward, done);
+        responses.set(observation, reward, done, infos);
         return responses;
     }
 
@@ -312,6 +347,14 @@ public class JNIGridnetVecClient {
         for (int i = selfPlayClients.length*2; i < masks.length; i++) {
             masks[i] = clients[i-selfPlayClients.length*2].getMasks(player);
         }
+        return masks;
+    }
+
+    public int[][][][] getBotMasks(int player) throws Exception {
+        for (int i = 0; i < botClients.length; i++) {
+            masks[i] = botClients[i].getMasks(player);
+        }
+
         return masks;
     }
 
