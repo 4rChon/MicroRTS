@@ -165,8 +165,11 @@ public class PhysicalGameStatePanel extends JPanel {
             setBackground(Color.WHITE);
             // White theme vars
             GRIDLINE = Color.decode("#000000"); // soft gray
-            PLAYER0UNIT_OUTLINE = Color.decode("#0C7BDC"); // soft blue
-            PLAYER0_PARTIAL_OBSERVABILITY = Color.decode("#9CCAE4"); // softer blue
+            // use a green instead of blue for colorblind friendliness
+            // PLAYER0UNIT_OUTLINE = Color.decode("#0C7BDC"); // soft blue
+            PLAYER0UNIT_OUTLINE = Color.decode("#2ca02c"); // soft green
+            //PLAYER0_PARTIAL_OBSERVABILITY = Color.decode("#9CCAE4"); // softer blue
+            PLAYER0_PARTIAL_OBSERVABILITY = Color.decode("#98df8a"); // softer green
             PLAYER1UNIT_OUTLINE = Color.decode("#BF3682"); // soft red
             PLAYER1_PARTIAL_OBSERVABILITY = Color.decode("#C183A6"); // softer red
             PLAYERBOTH_OBSERVABILITY = Color.decode("#E69F00"); // softer purple
@@ -291,9 +294,9 @@ public class PhysicalGameStatePanel extends JPanel {
         int grid = Math.min(gridx,gridy);
         int sizex = grid*pgs.getWidth();
         int sizey = grid*pgs.getHeight();
-        float unitLineThickness = 1f;
-        if (grid > 10) unitLineThickness = 1.8f;
-        if (grid > 20) unitLineThickness = 2.3f;
+        float unitLineThickness = 1f * 2f;
+        if (grid > 10) unitLineThickness = 1.8f * 2f;
+        if (grid > 20) unitLineThickness = 2.3f * 2f;
 
         if (!fullObservability && pogs!=null && pogs[0]!=null && pogs[1]!=null) {
             if (pogs[0].getTime() != gs.getTime()) {
